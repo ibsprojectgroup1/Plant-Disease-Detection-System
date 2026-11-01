@@ -1,6 +1,7 @@
 
 import tensorflow as tf
 from tensorflow.keras import layers
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 
 @tf.keras.utils.register_keras_serializable()
@@ -43,3 +44,13 @@ def prepare_efficientnetb0_input(images):
     images = tf.image.resize(images, (224, 224))
     images = tf.cast(images, tf.float32)
     return images
+
+
+def prepare_mobilenetv2_input(images):
+    """
+    Resize and preprocess images for the MobileNetV2 leaf validator.
+    Converts pixel values from [0, 255] to [-1, 1].
+    """
+    images = tf.image.resize(images, (224, 224))
+    images = tf.cast(images, tf.float32)
+    return preprocess_input(images)
