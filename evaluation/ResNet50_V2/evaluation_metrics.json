@@ -1,0 +1,12 @@
+{
+    "Architecture": "ResNet50",
+    "Dataset_Version": "Version 2",
+    "Test_Images": 714,
+    "Correct_Predictions": 610,
+    "Incorrect_Predictions": 104,
+    "Accuracy": 0.8543417366946778,
+    "Macro_Precision": 0.8591132431348752,
+    "Macro_Recall": 0.8580924721468742,
+    "Macro_F1": 0.8549611858668904,
+    "Weighted_F1": 0.8549168564995668
+}

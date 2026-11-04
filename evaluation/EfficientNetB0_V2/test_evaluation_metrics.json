@@ -1,0 +1,14 @@
+{
+    "model": "EfficientNetB0",
+    "dataset_version": "Version 2",
+    "test_images": 714,
+    "correct_predictions": 588,
+    "incorrect_predictions": 126,
+    "accuracy": 0.8235294117647058,
+    "macro_precision": 0.8347224761249045,
+    "macro_recall": 0.8297721517984448,
+    "macro_f1": 0.8220782826618258,
+    "weighted_f1": 0.8225465995438045,
+    "prediction_time_seconds": 142.00045800209045,
+    "model_size_mb": 16.3
+}

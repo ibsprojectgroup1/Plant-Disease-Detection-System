@@ -1,147 +1,205 @@
 
-
 import os
 import json
 import numpy as np
 import tensorflow as tf
+
 from PIL import Image
+
+from tensorflow.keras.applications.resnet50 import preprocess_input as resnet_preprocess_input
 
 from preprocessing_code import (
     ResNet50Preprocessing,
-    prepare_resnet50_input,
-    prepare_efficientnetb0_input,
+    prepare_convnext_input,
     prepare_mobilenetv2_input
 )
 
+
+# =====================================
+# 1. Project Paths and Class Mappings
+# =====================================
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_DIR = os.path.join(BASE_DIR, "trained_models")
+
+MODEL_DIR = os.path.join(BASE_DIR, "trained_models_valid")
 
 with open(os.path.join(BASE_DIR, "class_mapping.json"), "r") as f:
     CLASS_MAPPING = json.load(f)
 
 
 # =====================================
-# 1. Load Disease Classification Models
+# 2. Load All Five Models
 # =====================================
 
-def load_model(model_type="ResNet50"):
+def load_models():
 
-    if model_type == "ResNet50":
-        model_path = os.path.join(
-            MODEL_DIR, "ResNet50_V2_Final.keras"
-        )
+    models = {}
 
-        model = tf.keras.models.load_model(
-            model_path,
-            custom_objects={
-                "ResNet50Preprocessing": ResNet50Preprocessing,
-                "Custom>ResNet50Preprocessing": ResNet50Preprocessing
-            },
-            compile=False
-        )
-
-    elif model_type == "EfficientNetB0":
-        model_path = os.path.join(
-            MODEL_DIR, "EfficientNetB0_V2_Final.keras"
-        )
-
-        model = tf.keras.models.load_model(
-            model_path,
-            compile=False
-        )
-
-    else:
-        raise ValueError("Unsupported model type.")
-
-    return model
-
-
-# =====================================
-# 2. Load MobileNetV2 Leaf Validator
-# =====================================
-
-def load_leaf_validator():
-
-    model_path = os.path.join(
-        MODEL_DIR, "Leaf_Validator_MobileNetV2.keras"
-    )
-
-    model = tf.keras.models.load_model(
-        model_path,
+    # General leaf validator
+    models["leaf_validator"] = tf.keras.models.load_model(
+        os.path.join(MODEL_DIR, "Leaf_Validator_MobileNetV2.keras"),
         compile=False
     )
 
-    return model
+    # Cassava validator
+    models["cassava_validator"] = tf.keras.models.load_model(
+        os.path.join(
+            MODEL_DIR,
+            "Cassava_Validator_MobileNetV2_Improved.keras"
+        ),
+        compile=False
+    )
+
+    # Maize validator
+    models["maize_validator"] = tf.keras.models.load_model(
+        os.path.join(MODEL_DIR, "Maize_Validator_MobileNetV2.keras"),
+        compile=False
+    )
+
+    # Cassava disease classifier
+    models["cassava_classifier"] = tf.keras.models.load_model(
+        os.path.join(
+            MODEL_DIR,
+            "Copy of ConvNeXtTiny_finetuned_best.keras"
+        ),
+        compile=False
+    )
+
+    # Maize disease classifier
+    models["maize_classifier"] = tf.keras.models.load_model(
+        os.path.join(
+            MODEL_DIR,
+            "Copy of ResNet50_finetuned_best.keras"
+        ),
+        custom_objects={
+            "preprocess_input": resnet_preprocess_input,
+            "ResNet50Preprocessing": ResNet50Preprocessing,
+            "Custom>ResNet50Preprocessing": ResNet50Preprocessing
+        },
+        compile=False
+    )
+
+    return models
 
 
 # =====================================
-# 3. Predict Leaf Disease
+# 3. Main Prediction Pipeline
 # =====================================
 
-def predict_leaf(
-    image_file,
-    model_type="ResNet50",
-    model=None,
-    validator=None
-):
+def predict_leaf(image_file, crop_type, models=None):
 
-    # Load models if they were not supplied
-    if validator is None:
-        validator = load_leaf_validator()
+    crop_type = crop_type.lower()
 
-    if model is None:
-        model = load_model(model_type)
+    if crop_type not in ["cassava", "maize"]:
+        raise ValueError(
+            "crop_type must be either 'cassava' or 'maize'."
+        )
 
-    # Open uploaded image
+    if models is None:
+        models = load_models()
+
     image = Image.open(image_file).convert("RGB")
     image = np.array(image, dtype=np.float32)
 
-    # Prepare image for MobileNetV2
-    validator_input = tf.expand_dims(image, axis=0)
-    validator_input = prepare_mobilenetv2_input(validator_input)
+    image_tensor = tf.expand_dims(image, axis=0)
 
-    # Predict whether image is NOT a leaf
+
+    # =================================
+    # Stage 1: General Leaf Validation
+    # =================================
+
+    leaf_input = prepare_mobilenetv2_input(image_tensor)
+
     not_leaf_probability = float(
-        validator.predict(validator_input, verbose=0)[0][0]
+        models["leaf_validator"].predict(
+            leaf_input, verbose=0
+        )[0][0]
     )
 
-    # Reject image if it is not a leaf
     if not_leaf_probability >= 0.5:
 
         return {
             "is_leaf": False,
+            "is_correct_crop": False,
             "message": (
                 "We couldn't identify this as a valid leaf image. "
-                "Please try uploading a clearer, well-lit image of a "
-                "cassava or maize leaf."
+                "Please try uploading a clearer, well-lit leaf image."
             ),
             "confidence": not_leaf_probability
         }
 
+
     # =================================
-    # Continue with Disease Prediction
+    # Stage 2: Crop-Specific Validation
     # =================================
 
-    image = tf.expand_dims(image, axis=0)
+    validator = models[f"{crop_type}_validator"]
 
-    if model_type == "ResNet50":
-        image = prepare_resnet50_input(image)
+    crop_input = prepare_mobilenetv2_input(image_tensor)
 
-    elif model_type == "EfficientNetB0":
-        image = prepare_efficientnetb0_input(image)
+    not_crop_probability = float(
+        validator.predict(
+            crop_input, verbose=0
+        )[0][0]
+    )
 
-    probabilities = model.predict(image, verbose=0)[0]
+    if not_crop_probability >= 0.5:
+
+        return {
+            "is_leaf": True,
+            "is_correct_crop": False,
+            "crop_type": crop_type,
+            "message": (
+                f"This image does not appear to be a {crop_type} leaf. "
+                f"Please upload a clear {crop_type} leaf image."
+            ),
+            "confidence": not_crop_probability
+        }
+
+
+    # =================================
+    # Stage 3: Disease Classification
+    # =================================
+
+    classifier = models[f"{crop_type}_classifier"]
+
+    if crop_type == "cassava":
+
+        classifier_input = prepare_convnext_input(image_tensor)
+
+    else:
+
+        # ResNet50 contains its own preprocessing layer
+        classifier_input = tf.image.resize(
+            image_tensor, (224, 224)
+        )
+
+
+    probabilities = classifier.predict(
+        classifier_input, verbose=0
+    )[0]
 
     predicted_index = int(np.argmax(probabilities))
-    predicted_class = CLASS_MAPPING[str(predicted_index)]
+
+    predicted_class = CLASS_MAPPING[crop_type][
+        str(predicted_index)
+    ]
+
     confidence = float(probabilities[predicted_index])
+
+
+    # =================================
+    # Stage 4: Return Prediction
+    # =================================
 
     return {
         "is_leaf": True,
+        "is_correct_crop": True,
+        "crop_type": crop_type,
         "predicted_class": predicted_class,
         "confidence": confidence,
         "all_probabilities": {
-            CLASS_MAPPING[str(i)]: float(probabilities[i])
+            CLASS_MAPPING[crop_type][str(i)]: float(probabilities[i])
             for i in range(len(probabilities))
         }
     }

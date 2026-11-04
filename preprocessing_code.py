@@ -4,14 +4,15 @@ from tensorflow.keras import layers
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 
+# =====================================
+# 1. ResNet50 Custom Preprocessing Layer
+# =====================================
+
 @tf.keras.utils.register_keras_serializable()
 class ResNet50Preprocessing(layers.Layer):
-    """
-    Exact preprocessing layer used by the trained ResNet50 model.
-    Input is expected in the MobileNetV2-normalized range [-1, 1].
-    """
 
     def call(self, inputs):
+
         # Convert [-1, 1] to [0, 255]
         x = (inputs + 1.0) * 127.5
 
@@ -27,30 +28,37 @@ class ResNet50Preprocessing(layers.Layer):
         return x - means
 
 
-def prepare_resnet50_input(images):
-    """
-    Resize and normalize RGB images for the ResNet50 model.
-    """
+# =====================================
+# 2. ConvNeXtTiny Preprocessing
+# =====================================
+
+def prepare_convnext_input(images):
+
     images = tf.image.resize(images, (224, 224))
     images = tf.cast(images, tf.float32)
-    return (images / 127.5) - 1.0
 
-
-def prepare_efficientnetb0_input(images):
-    """
-    Prepare images for the EfficientNetB0 model.
-    The model contains its own input rescaling.
-    """
-    images = tf.image.resize(images, (224, 224))
-    images = tf.cast(images, tf.float32)
     return images
 
 
-def prepare_mobilenetv2_input(images):
-    """
-    Resize and preprocess images for the MobileNetV2 leaf validator.
-    Converts pixel values from [0, 255] to [-1, 1].
-    """
+# =====================================
+# 3. ResNet50 Preprocessing
+# =====================================
+
+def prepare_resnet50_input(images):
+
     images = tf.image.resize(images, (224, 224))
     images = tf.cast(images, tf.float32)
+
+    return (images / 127.5) - 1.0
+
+
+# =====================================
+# 4. MobileNetV2 Preprocessing
+# =====================================
+
+def prepare_mobilenetv2_input(images):
+
+    images = tf.image.resize(images, (224, 224))
+    images = tf.cast(images, tf.float32)
+
     return preprocess_input(images)

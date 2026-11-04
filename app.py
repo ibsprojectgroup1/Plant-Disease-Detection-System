@@ -1,12 +1,7 @@
 
-
 import streamlit as st
 
-from prediction import (
-    load_model,
-    load_leaf_validator,
-    predict_leaf
-)
+from prediction import load_models, predict_leaf
 
 
 # =====================================
@@ -27,9 +22,8 @@ st.write(
 )
 
 st.info(
-    "Accuracy Notice: Cassava disease predictions may be less reliable "
-    "than expected. Results are intended for preliminary guidance and "
-    "should be verified with a plant disease expert."
+    "Predictions are not guaranteed to be 100% accurate. "
+    "Results should be treated as guidance and not as a definite diagnosis."
 )
 
 
@@ -38,23 +32,20 @@ st.info(
 # =====================================
 
 @st.cache_resource
-def get_model(model_name):
-    return load_model(model_name)
-
-
-@st.cache_resource
-def get_leaf_validator():
-    return load_leaf_validator()
+def get_models():
+    return load_models()
 
 
 # =====================================
-# 3. Model Selection
+# 3. Crop Selection
 # =====================================
 
-model_type = st.selectbox(
-    "Select Classification Model",
-    ["ResNet50", "EfficientNetB0"]
+crop_type = st.selectbox(
+    "Select Crop Type",
+    ["Cassava", "Maize"]
 )
+
+selected_crop = crop_type.lower()
 
 
 # =====================================
@@ -62,7 +53,7 @@ model_type = st.selectbox(
 # =====================================
 
 uploaded_file = st.file_uploader(
-    "Upload a leaf image",
+    f"Upload a {selected_crop} leaf image",
     type=["jpg", "jpeg", "png"]
 )
 
@@ -75,27 +66,24 @@ if uploaded_file is not None:
         use_container_width=True
     )
 
-    if st.button("Predict Disease"):
+    if st.button("Predict Disease", type="primary"):
 
         try:
 
             with st.spinner("Analyzing image..."):
 
-                # Load selected disease model
-                model = get_model(model_type)
+                # Load all five models
+                models = get_models()
 
-                # Load MobileNetV2 validator
-                validator = get_leaf_validator()
-
-                # Run the complete prediction pipeline
                 uploaded_file.seek(0)
 
+                # Run the complete prediction pipeline
                 result = predict_leaf(
-                    uploaded_file,
-                    model_type=model_type,
-                    model=model,
-                    validator=validator
+                    image_file=uploaded_file,
+                    crop_type=selected_crop,
+                    models=models
                 )
+
 
             # =================================
             # 5. Display Prediction Results
@@ -106,18 +94,30 @@ if uploaded_file is not None:
                 st.error(result["message"])
 
                 st.info(
-                    "Please upload a valid cassava or maize leaf image."
+                    "Please try uploading a clear, well-lit "
+                    "image of a leaf."
+                )
+
+            elif not result["is_correct_crop"]:
+
+                st.warning(result["message"])
+
+                st.info(
+                    f"You selected {crop_type}. "
+                    f"Please upload a clear {selected_crop} leaf image."
                 )
 
             else:
 
-                st.success("Leaf image successfully validated!")
+                st.success(
+                    f"{crop_type} leaf successfully validated!"
+                )
 
                 st.subheader("Disease Prediction")
 
                 st.write(
                     f"**Predicted Class:** "
-                    f"{result['predicted_class']}"
+                    f"{result['predicted_class'].title()}"
                 )
 
                 st.metric(
@@ -131,6 +131,12 @@ if uploaded_file is not None:
                 st.bar_chart(
                     result["all_probabilities"]
                 )
+
+                st.caption(
+                    "The confidence score represents the model's "
+                    "estimated confidence in its prediction."
+                )
+
 
         except Exception as e:
 
